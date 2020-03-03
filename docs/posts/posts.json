@@ -1,0 +1,17 @@
+[
+  {
+    "path": "posts/welcome/",
+    "title": "Welcome to R Experiments",
+    "description": "Welcome to our new blog, R Experiments. We hope you enjoy \nreading what we have to say!",
+    "author": [
+      {
+        "name": "Nora Jones",
+        "url": "https://example.com/norajones"
+      }
+    ],
+    "date": "2020-03-03",
+    "categories": [],
+    "preview": {},
+    "last_modified": "2020-03-03T11:52:38+01:00"
+  }
+]
