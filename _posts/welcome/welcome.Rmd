@@ -1,7 +1,7 @@
 ---
 title: "Welcome to R Experiments"
 description: |
-  Welcome to our new blog, R Experiments. We hope you enjoy 
+  Welcome to my new blog, R Experiments. We hope you enjoy 
   reading what we have to say!
 author:
   - name: Lorenzo Braschi
@@ -22,6 +22,6 @@ knitr::opts_chunk$set(echo = FALSE)
 
 This is my nth attempt at having an R blog dedicated to stuff. The aim is to publish some brief tutorials about all things data science in R, but focusing mostly on _modelling_ techniques, R packages, and the like. 
 
+This will mostly be a collection of notebooks, exploring different topics in a somewhat chaotic way. I will try to keep it updated roughly every other week. 
 
-
-
+Let's see how long do I last! 
