@@ -1,61 +1,91 @@
 ---
-title: "R and Covid-19"
+title: "COVID-19 in Poland"
 description: |
-  A short description of the post.
+  How bad the situation is. 
 author:
   - name: Lorenzo Braschi
-date: 03-12-2020
+date: 03-13-2020
 output:
   distill::distill_article:
     self_contained: false
 draft: false
+bibliography: ../biblio.bib
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(glue)
 library(tidyverse)
 library(rmarkdown)
 ```
 
-We'll be using the coronavirus dataset for the analyses. 
+<!-- We'll be using the coronavirus dataset for the analyses. This analysis will be strongly influenced by Tim Church's analyses[@churches2020covid19rpart1;@churches2020covid19rpart2], but applied to Poland.  -->
+
+## Data
+
+For data we will use the [coronavirus](https://ramikrispin.github.io/coronavirus/articles/intro_coronavirus_dataset.html) dataset, which is a conveniently tidied table based on the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE). The package is published to CRAN, but it is updated on GitHub on a daily basis. To get the latest version, we run: 
+
 
 <aside>
-The [coronavirus](https://ramikrispin.github.io/coronavirus/articles/intro_coronavirus_dataset.html) dataset R package. 
+![](https://ramikrispin.github.io/coronavirus/reference/figures/coronavirus.png)
 </aside>
+
+
+
+```{r}
+remotes::install_github("RamiKrispin/coronavirus")
+```
+
+
+
+We can have a look at the data. As we see, each row is a particular _record_ with the number of cases, confirmed, dead or recovered, for a given region. Geographical coordinates are added for map plots. 
 
 ```{r, layout = "l-body-outset"}
 library(coronavirus)
-# View the data
 
+# View the data
 paged_table(coronavirus)
 
 ```
 
 Each row of this table gives the number of cases reported per each day and region between `r min(coronavirus$date)` and `r max(coronavirus$date)`. 
 
+We can focus on this data for Poland only, as this is the country in which I live: 
 
 ```{r}
-cumCovid <- coronavirus %>% 
-  arrange(Country.Region, date, type) %>% 
-  group_by(Country.Region, date, type) %>% 
-  summarise(cases = sum(cases)) %>% 
-  pivot_wider(names_from = type, 
-              values_from = cases, 
-              values_fill = list(cases = 0)) %>% 
-  mutate(active = confirmed - recovered - death) %>% 
-  group_by(Country.Region) %>% 
-  mutate(cummulative = cumsum(active))
+# Subset Poland 
+poland <- coronavirus %>% 
+  filter(Country.Region == "Poland") %>% 
+  # We can drop columns Province.State, Country.Region, Lat and Long because they are either empty or constant for Poland
+  select(-Province.State, -Country.Region, -Lat, -Long) %>% 
+  arrange(date, type) %>% 
+  group_by(type) %>% 
+  # Added a cumulative sum of cases
+  mutate(cumcases = cumsum(cases))
 
-cumCovid %>% 
-  mutate(is.China = ifelse(Country.Region == "Mainland China", "Mainland China", "Rest of the world")) %>% 
-  filter(!Country.Region %in% c("Others")) %>% 
-  ggplot(aes(date, cummulative, color = Country.Region))+
-  geom_line()+
-  facet_grid(is.China~., scales = "free")
-
+# Visualise the Poland data
+paged_table(poland)
 ```
 
 
+We can do a quick plot on the number of cumulative confirmed, dead and recovered cases up to each day: 
+
+```{r}
+poland %>% 
+  ggplot(aes(date, cumcases, color = type)) + 
+  geom_line()+
+  geom_point()+
+  facet_grid(type~., scales = "free_y") + 
+  theme_minimal()+
+  theme(legend.position = "")+
+  scale_color_viridis_d()+
+  labs(
+    title = "Cases of COVID-19 in Poland", 
+    subtitle = "Note; Y axes not to scale", 
+    caption = glue("Data last updated on {format(Sys.Date()-1, '%m-%d-%Y')}"))
+```
+
+Focusing on the 
 
 
 
