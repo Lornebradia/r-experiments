@@ -1,0 +1,61 @@
+---
+title: "R and Covid-19"
+description: |
+  A short description of the post.
+author:
+  - name: Lorenzo Braschi
+date: 03-12-2020
+output:
+  distill::distill_article:
+    self_contained: false
+draft: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(rmarkdown)
+```
+
+We'll be using the coronavirus dataset for the analyses. 
+
+<aside>
+The [coronavirus](https://ramikrispin.github.io/coronavirus/articles/intro_coronavirus_dataset.html) dataset R package. 
+</aside>
+
+```{r, layout = "l-body-outset"}
+library(coronavirus)
+# View the data
+
+paged_table(coronavirus)
+
+```
+
+Each row of this table gives the number of cases reported per each day and region between `r min(coronavirus$date)` and `r max(coronavirus$date)`. 
+
+
+```{r}
+cumCovid <- coronavirus %>% 
+  arrange(Country.Region, date, type) %>% 
+  group_by(Country.Region, date, type) %>% 
+  summarise(cases = sum(cases)) %>% 
+  pivot_wider(names_from = type, 
+              values_from = cases, 
+              values_fill = list(cases = 0)) %>% 
+  mutate(active = confirmed - recovered - death) %>% 
+  group_by(Country.Region) %>% 
+  mutate(cummulative = cumsum(active))
+
+cumCovid %>% 
+  mutate(is.China = ifelse(Country.Region == "Mainland China", "Mainland China", "Rest of the world")) %>% 
+  filter(!Country.Region %in% c("Others")) %>% 
+  ggplot(aes(date, cummulative, color = Country.Region))+
+  geom_line()+
+  facet_grid(is.China~., scales = "free")
+
+```
+
+
+
+
+
