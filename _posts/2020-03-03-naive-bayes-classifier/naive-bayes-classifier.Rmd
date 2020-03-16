@@ -47,7 +47,6 @@ Consider for example the chance that someone will develop lung cancer within the
 
 ## Corrections {.appendix}
 
-
 Any mistakes or suggested changes please [open an issue](https://github.com/Lornebradia/r-experiments/issues/new) on the source repository. 
 
 ## Links {.appendix}

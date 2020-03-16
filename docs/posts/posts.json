@@ -1,7 +1,7 @@
 [
   {
     "path": "posts/2020-03-12-r-and-covid-19/",
-    "title": "COVID-19 in Poland",
+    "title": "COVID-19 in Europe",
     "description": "How bad the situation is.",
     "author": [
       {
@@ -11,8 +11,8 @@
     ],
     "date": "2020-03-13",
     "categories": [],
-    "preview": {},
-    "last_modified": "2020-03-14T17:31:44+01:00"
+    "preview": "posts/2020-03-12-r-and-covid-19/r-and-covid-19_files/figure-html5/unnamed-chunk-8-1.png",
+    "last_modified": "2020-03-15T13:28:07+01:00"
   },
   {
     "path": "posts/welcome/",

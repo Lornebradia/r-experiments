@@ -1,5 +1,5 @@
 ---
-title: "COVID-19 in Poland"
+title: "COVID-19 in Europe"
 description: |
   How bad the situation is. 
 author:
@@ -8,6 +8,8 @@ date: 03-13-2020
 output:
   distill::distill_article:
     self_contained: false
+    toc: true
+    toc_depth: 2
 draft: false
 bibliography: ../biblio.bib
 ---
@@ -17,32 +19,54 @@ knitr::opts_chunk$set(echo = TRUE)
 library(glue)
 library(tidyverse)
 library(rmarkdown)
+library(plotly)
+
+theme_set(theme_minimal())
+
+countries_list <- c("Poland",
+                    "Italy",
+                    "Denmark",
+                    "Sweden",
+                    "Norway",
+                    "Finland",
+                    "Spain",
+                    "France",
+                    "Germany",
+                    "Portugal",
+                    "United Kingdom")
+
 ```
 
 <!-- We'll be using the coronavirus dataset for the analyses. This analysis will be strongly influenced by Tim Church's analyses[@churches2020covid19rpart1;@churches2020covid19rpart2], but applied to Poland.  -->
 
-## Data
+# Get the data
 
-For data we will use the [coronavirus](https://ramikrispin.github.io/coronavirus/articles/intro_coronavirus_dataset.html) dataset, which is a conveniently tidied table based on the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE). The package is published to CRAN, but it is updated on GitHub on a daily basis. To get the latest version, we run: 
-
+For data we will use the [coronavirus](https://ramikrispin.github.io/coronavirus/articles/intro_coronavirus_dataset.html) dataset, which is a conveniently tidied table based on the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE). The original data is available at the [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19) repository if you prefer to do the cleanup yourself. 
 
 <aside>
-![](https://ramikrispin.github.io/coronavirus/reference/figures/coronavirus.png)
+[![](https://ramikrispin.github.io/coronavirus/reference/figures/coronavirus.png)](https://ramikrispin.github.io/coronavirus/)
 </aside>
 
 
+The coronavirus package is published to CRAN, but it is updated on GitHub on a daily basis. To get the latest version, we run: 
 
 ```{r}
 remotes::install_github("RamiKrispin/coronavirus")
 ```
 
+Another dataset that is available is the nCov2019 package[@Wu2020-et] available from [their GitHub site](https://github.com/GuangchuangYu/nCov2019). They provide a useful [vignette](https://guangchuangyu.github.io/nCov2019/) as well. This package does more than get data, it also provides function utilities for mapping and plotting the cases. We can obtain the latest version by running:
 
+```{r}
+remotes::install_github("GuangchuangYu/nCov2019")
+```
+
+
+# Exploratory Analysis
 
 We can have a look at the data. As we see, each row is a particular _record_ with the number of cases, confirmed, dead or recovered, for a given region. Geographical coordinates are added for map plots. 
 
 ```{r, layout = "l-body-outset"}
 library(coronavirus)
-
 # View the data
 paged_table(coronavirus)
 
@@ -50,42 +74,117 @@ paged_table(coronavirus)
 
 Each row of this table gives the number of cases reported per each day and region between `r min(coronavirus$date)` and `r max(coronavirus$date)`. 
 
-We can focus on this data for Poland only, as this is the country in which I live: 
+The nCov2019 dataset 
 
 ```{r}
+library(nCov2019)
+
+ncov <- get_nCov2019(lang = "en") %>% .['global'] %>% tbl_df()
+```
+
+
+
+We can focus on this data for: 
+
+```{r, layout = "l-body-outset"}
 # Subset Poland 
-poland <- coronavirus %>% 
-  filter(Country.Region == "Poland") %>% 
-  # We can drop columns Province.State, Country.Region, Lat and Long because they are either empty or constant for Poland
-  select(-Province.State, -Country.Region, -Lat, -Long) %>% 
-  arrange(date, type) %>% 
-  group_by(type) %>% 
+countries <- coronavirus %>% 
+  select(-Lat, -Long) %>% 
+  filter(Country.Region %in% countries_list) %>%
+  # Some countries have multiple regions. Adding them up for the purposes of this analysis.
+  group_by(Country.Region, date, type) %>% 
+  summarise(cases = sum(cases)) %>% 
+  arrange(Country.Region, date, type) %>% 
+  group_by(Country.Region, type) %>% 
   # Added a cumulative sum of cases
   mutate(cumcases = cumsum(cases))
 
 # Visualise the Poland data
-paged_table(poland)
+paged_table(countries)
 ```
 
 
-We can do a quick plot on the number of cumulative confirmed, dead and recovered cases up to each day: 
+We can do a quick plot on the number of cumulative confirmed cases up to each day: 
 
-```{r}
-poland %>% 
-  ggplot(aes(date, cumcases, color = type)) + 
+```{r, layout = "l-page-outset", fig.height = 6}
+cumconfplot <- countries %>% 
+  filter(date >= "2020-01-01", 
+         type == "confirmed") %>% 
+  ggplot(aes(date, cumcases, color = Country.Region)) + 
   geom_line()+
   geom_point()+
-  facet_grid(type~., scales = "free_y") + 
-  theme_minimal()+
-  theme(legend.position = "")+
+  theme(legend.position = "bottom", 
+        strip.text.y = element_text(angle = 0))+
   scale_color_viridis_d()+
+  scale_x_date("Date of report")+
   labs(
-    title = "Cases of COVID-19 in Poland", 
+    title = "Confirmed cases of COVID-19 per country", 
     subtitle = "Note; Y axes not to scale", 
     caption = glue("Data last updated on {format(Sys.Date()-1, '%m-%d-%Y')}"))
+
+ggplotly(cumconfplot)
 ```
 
-Focusing on the 
+We clearly see that __Italy__ is still the most gravely affected EU country by far with  
+`r countries %>% filter(Country.Region == "Italy", date == max(date)) %>% pluck("cumcases", 1)` accumulated cases as of `r countries %>% filter(Country.Region == "Italy", date == max(date)) %>% pluck("date", 1) %>% format("%B %d")`. By this date, `r countries %>% filter(Country.Region == "Italy", date == max(date)) %>% pluck("cumcases", 2)` patients have died already. The number of new confirmed cases _today_ (last report) in Italy alone is `r countries %>% filter(Country.Region == "Italy", date == max(date)) %>% pluck("cases", 1)`. 
+
+__Spain__ is also severely affected. The country has `r countries %>% filter(Country.Region == "Spain", date == max(date)) %>% pluck("cumcases", 1)` patients accumulated so far, with `r countries %>% filter(Country.Region == "Spain", date == max(date)) %>% pluck("cases", 1)` new confirmed cases as of `r countries %>% filter(Country.Region == "Spain", date == max(date)) %>% pluck("date", 1) %>% format("%B %d")`. So far there have been `r countries %>% filter(Country.Region == "Spain", date == max(date)) %>% pluck("cumcases", 2)` casualties due to the virus. 
+
+The number of cases that are produced each day is the __daily incremental incidence__ is referred to as the _epidemic curve_, which is usually plotted as a bar chart: 
+
+```{r, layout = "l-body-outset"}
+epicurves <- countries %>% 
+  filter(type == "confirmed", 
+         date >= "2020-02-20") %>% 
+  ggplot(aes(date, cases))+
+  geom_bar(stat = "identity", show.legend = FALSE, fill = "steelblue")+
+  facet_grid(Country.Region~., scales = "free")+
+  theme(legend.position = "", 
+        strip.text.y = element_text(angle = 0))+
+  scale_fill_viridis_d()+
+  labs(title = "Epidemic curve for each country")+
+  scale_x_date("Date of report")+
+  scale_y_continuous("Number of cases")
+
+ggplotly(epicurves)
+```
+
+This looks bad. The largest number of confirmed cases are produced by the lates date of reporting, which means that the epidemic is far from being controlled. 
+
+In comparison, lets' have a look at how the situation looks in South Korea. South Korea was one of the countries that was heavily stuck by the SARS 2003 and 2009 epidemics, and learned how to deal with such cases. For most of the time, they had the situation under control, until a super spreader (called Patient-31) in the Daegu province managed to infect a large number of people in a short time, exploding the number of cases. 
+
+<aside>
+More about patient 31 here: [The Korean clusters:
+How coronavirus cases exploded in South Korean churches and hospitals]( https://graphics.reuters.com/CHINA-HEALTH-SOUTHKOREA-CLUSTERS/0100B5G33SB/index.html)
+</aside>
+
+Since then however, the situation seems to back to relative control as the number of new cases is quickly dropping down. 
+
+```{r, layout = "l-body-outset"}
+coronavirus %>% 
+  filter(Country.Region == "Korea, South",
+         type == "confirmed",
+         date >= "2020-02-20") %>%  
+  ggplot(aes(date, cases))+
+  geom_bar(stat = "identity", fill = "steelblue")+
+  theme(legend.position = "", 
+        strip.text.y = element_text(angle = 0))+
+  scale_fill_viridis_d()+
+  labs(title = "Epidemic curve for South Korea")+
+  scale_x_date("Date of report")+
+  scale_y_continuous("Number of cases")
+```
+
+So it seems that the number of confirmed cases in South Korea is really coming down. 
 
 
+
+
+
+## Corrections {.appendix}
+
+Any mistakes or suggested changes please [open an issue](https://github.com/Lornebradia/r-experiments/issues/new) on the source repository. 
+
+
+## Links {.appendix}
 
