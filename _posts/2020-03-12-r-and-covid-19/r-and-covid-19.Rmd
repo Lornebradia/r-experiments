@@ -341,8 +341,9 @@ $$
 RSS(\beta, \gamma) = \sum_t (I(t) - \hat I(t))^2
 $$
 
-Most importantly, we want to model not just a single country, but a list of them; it would be of course highly inefficient to basically repeat the same lines of code over and over, replacing the country name at every step. So we need to wrap the modelling step in a function. Then we will apply this function via `purrr::map()` to a nested dataset. 
+Most importantly, we want to model not just a single country, but a list of them; it would be of course highly inefficient to basically repeat the same lines of code over and over, replacing the country name at every step. So we need to wrap the modelling step in a function. Then we will apply this function via `purrr::map()` to a nested dataset. Let's go step by step: 
 
+First, the SIR model needs a Susceptible parameter. This is usually taken to mean the population of a given country. Our datasets do not incorporate this information; however, the dataset `population` in base R contains population values for 219 countries/states up to 2013. We can use that to get the number of Susceptible people, as the population for the countries of interest hasn't changed much since 2013. 
 
 ```{r, results = "hide"}
 
