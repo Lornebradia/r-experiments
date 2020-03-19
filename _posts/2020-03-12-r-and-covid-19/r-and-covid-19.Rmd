@@ -382,8 +382,12 @@ Then we define a function to run a SIR model automatically. The function will ta
 ```{r}
 # A wrapping function for SIR modelling
 
-SIR_model <- function(country, data, N, forward = 0){
+SIR_model <- function(country, data, N, forward = 0, a = 1){
 
+  if(a > 1 | a <= 0 ){
+    usethis::ui_stop("ascertainment rate a must be larger than 0 and less or equal to 1")
+  }
+  
   # Initialise each model of the first data available. 
   # Each country has data starting differently.
   sir_start_date <- data %>% 
@@ -393,6 +397,7 @@ SIR_model <- function(country, data, N, forward = 0){
   # The total number of infected on each date. 
   Infected <- data %>% 
     filter(type == "confirmed") %>% 
+    mutate(cumcases = cumcases / a) %>% 
     pull(cumcases)
   
   Recovered <- data %>% 
@@ -502,7 +507,7 @@ setNames(countries.nest$sirplot, countries.nest$country)
 ```
 
 
-## Predictions with the SIR models
+## Log-linear models 
 
 
 
