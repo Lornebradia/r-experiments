@@ -1,0 +1,568 @@
+---
+title: "COVID-19 in Europe"
+description: |
+  Looking at the data
+author:
+  - name: Lorenzo Braschi
+date: 04-01-2020
+output:
+  distill::distill_article:
+    self_contained: false
+    toc: true
+    toc_depth: 2
+draft: false
+bibliography: ../biblio.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(glue)
+library(tidyverse)
+library(rmarkdown)
+library(plotly)
+library(deSolve)
+library(lubridate)
+library(patchwork)
+library(ggrepel)
+library(wbstats)
+
+theme_set(theme_minimal()+
+            theme(legend.position = "bottom", 
+                  axis.text = element_text(size = 5),
+                  axis.title = element_text(size = 6),
+                  plot.title = element_text(size = 10, face = "bold"),
+                  plot.subtitle = element_text(size = 7, face = "italic"),
+                  plot.caption = element_text(size = 7),
+                  strip.text = element_text(size = 5),
+                  strip.text.y = element_text(angle = 0)))
+
+countries_list <- c("Poland",
+                    "Italy",
+                    "Denmark",
+                    "Switzerland",
+                    "Sweden",
+                    "Norway",
+                    "Finland",
+                    "Spain",
+                    "France",
+                    "Germany",
+                    "Portugal",
+                    "United Kingdom")
+
+```
+
+<!-- We'll be using the coronavirus dataset for the analyses. This analysis will be strongly influenced by Tim Church's analyses[@churches2020covid19rpart1;@churches2020covid19rpart2], but applied to Poland.  -->
+
+# Get the data
+
+For data we will use the [coronavirus](https://ramikrispin.github.io/coronavirus/articles/intro_coronavirus_dataset.html) dataset, which is a conveniently tidied table based on the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE). The original data is available at the [CSSEGISandData/COVID-19](https://github.com/CSSEGISandData/COVID-19) repository if you prefer to do the cleanup yourself. 
+
+<aside>
+[![](https://ramikrispin.github.io/coronavirus/reference/figures/coronavirus.png)](https://ramikrispin.github.io/coronavirus/)
+</aside>
+
+
+The coronavirus package is published to CRAN, but it is updated on GitHub on a daily basis. To get the latest version, we run: 
+
+```{r, eval = T}
+remotes::install_github("RamiKrispin/coronavirus", dependencies = TRUE)
+```
+
+Another dataset that is available is the nCov2019 package[@Wu2020-et] available from [their GitHub site](https://github.com/GuangchuangYu/nCov2019). They provide a useful [vignette](https://guangchuangyu.github.io/nCov2019/) as well. This package does more than get data, it also provides function utilities for mapping and plotting the cases. We can obtain the latest version by running:
+
+```{r, eval = T}
+remotes::install_github("GuangchuangYu/nCov2019", dependencies = TRUE)
+```
+
+
+
+## The coronavirus dataset
+
+We can have a look at the data. As we see, each row is a particular _record_ with the number of cases, confirmed, dead or recovered, for a given region. Geographical coordinates are added for map plots. 
+
+```{r, layout = "l-body-outset"}
+library(coronavirus)
+# View the data
+paged_table(coronavirus)
+
+```
+
+Each row of this table gives the number of cases reported per each day and region between `r format(min(coronavirus$date), "%B %d %Y")` and `r format(max(coronavirus$date), "%B %d %Y")`. 
+
+## The nCov2019 dataset 
+
+```{r, layout = "l-body-outset"}
+library(nCov2019)
+
+all.ncov <- load_nCov2019(lang = "en") %>% .['global'] %>% tbl_df()
+
+# Filter ncov for the same coutries we're interested in: 
+all.ncov %>%
+  filter(country %in% countries_list) %>% 
+  paged_table(all.ncov)
+```
+
+This dataset is also collected from the GitHub repo, and contains data from `r format(min(all.ncov$time), "%B %d %Y")` to `r format(max(all.ncov$time), "%B %d %Y")`. `r ifelse(max(all.ncov$time) >= max(coronavirus$date), "The all.ncov2019 has more recent data than the coronavirus dataset, and thus", "Both all.ncov2019 and the coronavirus datasets have up to date data, however")` we will use the all.ncov2019 dataset as it is usually updated faster. 
+
+# Exploratory Analysis
+
+```{r, layout = "l-body-outset"}
+# Summarise per country and add a cumulative count
+all.corona <- coronavirus %>% 
+  select(-Lat, -Long) %>% 
+  rename(country = Country.Region) %>% 
+  group_by(country, date, type) %>% 
+  summarise(cases = sum(cases)) %>% 
+  arrange(country, date, type) %>% 
+  group_by(country, type) %>% 
+  # Add a cumulative sum of cases
+  mutate(cumcases = cumsum(cases)) %>% 
+  arrange(desc(cumcases))
+
+# Visualise all the countries caces data
+paged_table(all.corona)
+```
+
+We immediately see that in China the total number of confirmed cases is still high, but the new cases are extremely low. If we look instead at the data from nCov2019, we get very similar numbers (but not exactly identical, as it is expected). 
+
+```{r, layout = "l-body-outset"}
+all.ncov %>% 
+  arrange(desc(cum_confirm)) %>% 
+  paged_table()
+```
+
+A limitation of the nCov2019 dataset is that it does not give us the number of cases, but we can easily work around that by simply getting the difference from one day to the previous one:
+
+```{r}
+all.ncov <- all.ncov %>% 
+  arrange(country, time) %>% 
+  group_by(country) %>% 
+  mutate(
+    cases_confirmed = cum_confirm - lag(cum_confirm), 
+    cases_recovered = cum_heal - lag(cum_heal), 
+    cases_death = cum_dead - lag(cum_dead)
+  ) %>% 
+  # Remove empty rows; just removing if empty confirm should be enough
+  rename(cum_confirmed = cum_confirm, 
+         cum_recovered = cum_heal, 
+         cum_death = cum_dead,
+         date = time) %>% 
+  filter(!is.na(cases_confirmed))
+```
+
+<aside>
+It is important to acknowledge that both datasets are actually collections of collections of datasets, from sources in many languages across many hospitals and centers. The mere fact that we have such vast amounts of data quickly available is mindboggling. 
+</aside>
+
+The coronavirus dataset from John Hopkins and the data from the nCov2019 packages come from different sources, that can be updated at different times and with different degrees of accuracy. Therefore it would be a good idea to run a comparison of both datasets, to see if there any major discrepancies between the datasets. Comparing the coronavirus and the nCov2019 datasets require a little bit of data manipulation as they are in different formats. 
+
+
+```{r, layout = "l-body-outset", fig.height = 6}
+long.ncov <- inner_join(
+  all.ncov %>% 
+    select(-starts_with("cases_")) %>% 
+    pivot_longer(cum_confirmed:cum_death, 
+                 names_to = "type",
+                 names_prefix = "cum_",
+                 values_to = "cumcases"), 
+  all.ncov %>% 
+    select(-starts_with("cum_")) %>% 
+    pivot_longer(cases_confirmed:cases_death, 
+                 names_to = "type", 
+                 names_prefix = "cases_",
+                 values_to = "cases"), 
+  by = c("date", "country", "type")
+)
+
+
+joined <- full_join(all.corona, 
+                    long.ncov, 
+                    by = c("date", "country", "type"), 
+                    suffix = c("_coronavirus", "_nCov2019")) %>% 
+  pivot_longer(cases_coronavirus:cases_nCov2019,
+               names_to = "dataset") %>% 
+  separate(dataset, c("class", "dataset"), "_")
+
+
+# We get examples for our data of interest
+joined %>% 
+  filter(country %in% countries_list, 
+         type == "confirmed", 
+         class == "cumcases",
+         date >= "2020-03-01") %>% 
+  ggplot(aes(date, value, color = dataset))+
+  geom_line(alpha = .7)+
+  theme(axis.text.x = element_text(angle = 90))+
+  facet_wrap(country~., scales = "free")+
+  scale_color_viridis_d(end = .7)+
+  scale_y_continuous("Number of cases", labels = scales::comma)+
+  labs(title = "Coronavirus (John Hopkins) vs. nCov2019 (China) COVID-19 datasets", 
+       subtitle = "Cumulative cases comparison. Y axes not to scale.", 
+       caption = "Data limited from March 1 to enhance readabilty")
+
+```
+
+The two datasets are in remarkable agreement as to the number of cumulative cases, and the mior discrepancies won't impact much our modelling. As we have pointed out above, we will use the nCov2019 dataset as it is usually updated faster. We will have first a look at the nCov2019, restricting our analysis to those european countries for which we have a reasonably large number of cases. 
+
+```{r, echo = FALSE, results='markup'}
+glue::glue("{1:length(countries_list)}. {sort(countries_list)}")
+```
+
+
+We will focus this analysis on this `r length(countries_list)` european countries only. We can get the table of the new confirmed cases today and the total confirmed cases up to date:
+
+```{r, layout = "l-body-outset"}
+countries <- long.ncov %>% 
+  filter(country %in% countries_list) 
+
+countries %>% 
+  ungroup %>% 
+  filter(date == max(date), 
+         type %in% c("confirmed", "death")) %>% 
+  select(country, type, cases, cumcases) %>% 
+  arrange(type, desc(cumcases)) %>% 
+  paged_table()
+
+```
+
+We clearly see that __Italy__ is still the most gravely affected EU country with `r countries %>% filter(country == "Italy", date == max(date)) %>% pluck("cumcases", 1)` accumulated cases as of `r countries %>% filter(country == "Italy", date == max(date)) %>% pluck("date", 1) %>% format("%B %d")`. By this date, `r countries %>% filter(country == "Italy", date == max(date)) %>% pluck("cumcases", 2)` patients have died already. The number of new confirmed cases _yesterday_ (last report) in Italy is `r countries %>% filter(country == "Italy", date == max(date)) %>% pluck("cases", 1)`. 
+
+__Spain__ is catching up fast. The country has `r countries %>% filter(country == "Spain", date == max(date)) %>% pluck("cumcases", 1)` patients accumulated so far, with `r countries %>% filter(country == "Spain", date == max(date)) %>% pluck("cases", 1)` new confirmed cases as of `r countries %>% filter(country == "Spain", date == max(date)) %>% pluck("date", 1) %>% format("%B %d")`. So far there have been `r countries %>% filter(country == "Spain", date == max(date)) %>% pluck("cumcases", 2)` casualties due to the virus.
+
+My country of residence, __Poland__ has it comparably much better. There are `r countries %>% filter(country == "Poland", date == max(date)) %>% pluck("cumcases", 1)` confirmated cases so far, with `r countries %>% filter(country == "Poland", date == max(date)) %>% pluck("cases", 1)` new cases as of `r countries %>% filter(country == "Poland", date == max(date)) %>% pluck("date", 1) %>% format("%B %d")`. The number of casualties is still low, but already `r countries %>% filter(country == "Poland", date == max(date)) %>% pluck("cumcases", 2)` people have already died due to the virus. 
+
+We can plot on the number of cumulative confirmed cases up to each day: 
+
+```{r, layout = "l-page", fig.height = 8}
+(cumconfplot <- countries %>% 
+   filter(date >= "2020-03-01") %>% 
+   mutate(end_label = ifelse(date == max(date), country, NA)) %>% 
+   ggplot(aes(date, cumcases, color = country, linetype = type)) + 
+   facet_wrap(type~., scales = "free")+
+   geom_line()+
+   geom_point()+
+   geom_text_repel(aes(label = end_label), 
+                   nudge_x = .1, 
+                   nudge_y = .1, 
+                   size = 3
+   )+
+   theme(legend.position = "bottom", 
+         strip.text.y = element_text(angle = 0))+
+   scale_color_viridis_d()+
+   scale_y_continuous("Number of cases", labels = scales::comma)+
+   labs(
+     x = "Date of report",
+     y = "",
+     title = "Cases of COVID-19 per country", 
+     subtitle = "Note: Y axes not to scale", 
+     caption = glue("Data last updated on {format(Sys.Date(), '%B %d %Y')}"))
+)
+```
+
+This is definitely not loooking good. Another way of looking at this is to see how many new cases are being confirmed each day, or the __daily incremental incidence__. This is referred to as the _epidemic curve_, which is usually plotted as a bar chart: 
+
+```{r, layout = "l-page", fig.height=10}
+joined %>% 
+  filter(country %in% countries_list, 
+         type == "confirmed", 
+         class == "cases") %>% 
+  ggplot(aes(date, value, fill = dataset, color = dataset)) + 
+  # geom_point()+
+  # geom_line()+
+  geom_bar(stat = "identity", position = "identity", alpha = 1)+
+  theme(legend.position = "top", 
+        strip.text.y = element_text(angle = 0), 
+        axis.text.x.bottom = element_text(angle = 90)
+        )+
+  scale_fill_viridis_d(begin = .2, end = .8)+
+  scale_color_viridis_d(begin = .2, end = .8)+
+  scale_x_date(limits = c(as.Date("2020-02-20"), NA))+
+  scale_y_continuous(labels = scales::comma)+
+  facet_wrap(country~dataset, scales = "free", ncol = 4)+
+  labs(
+    x = "Date of report",
+    y = "Number of cases",
+    title = "Epidemic curve for each country",
+    subitle = "Number of new cases per country. Y axes not to scale.", 
+    caption = "Dataset comparison")
+```
+
+This looks bad. The largest number of confirmed cases are produced by the lates date of reporting, which means that the epidemic is far from being controlled. (Also we see we what seems to be a common pattern of missing data around March 12, as it seems unlikely there were suddenly no or little number of cases on that date. It is also possible that the data from March 13 reflect a dump of the 12th and 13th combined). 
+
+In comparison, lets' have a look at how the situation looks in South Korea. South Korea was one of the countries that was heavily stuck by the SARS 2003 and 2009 epidemics, and learned how to deal with such cases. For most of the time, they had the situation under control, until a super spreader (called Patient-31) in the Daegu province managed to infect a large number of people in a short time, exploding the number of cases. 
+
+<aside>
+More about patient 31 here: [The Korean clusters:
+How coronavirus cases exploded in South Korean churches and hospitals]( https://graphics.reuters.com/CHINA-HEALTH-SOUTHKOREA-CLUSTERS/0100B5G33SB/index.html)
+</aside>
+
+Since then however, the situation seems to back to relative control as the number of new cases is quickly dropping down. 
+
+```{r, layout = "l-body-outset"}
+(s.korea <- long.ncov %>% 
+   filter(country == "South Korea",
+          type == "confirmed",
+          date >= "2020-01-01") %>%  
+   ggplot(aes(date, cases, fill = "coronavirus"))+
+   geom_bar(stat = "identity")+
+   theme(legend.position = "", 
+         strip.text.y = element_text(angle = 0))+
+   scale_fill_viridis_d(begin = .2)+
+   labs(title = "Epidemic curve for South Korea")+
+   scale_x_date("Date of report")+
+   scale_y_continuous("Number of cases", labels = scales::comma)
+)
+```
+
+So it seems that the number of confirmed cases in South Korea is really coming down, although we would have to check the individual provinces to understand the situation there better.  
+
+Lastly, we can have a look at the situation in China: 
+
+```{r, layout = "l-body-outset"}
+(china <- long.ncov %>% 
+   filter(country == "China",
+          type == "confirmed",
+          date >= "2020-01-01") %>%  
+   ggplot(aes(date, cases, fill = "coronavirus"))+
+   geom_bar(stat = "identity")+
+   theme(legend.position = "", 
+         strip.text.y = element_text(angle = 0))+
+   scale_fill_viridis_d(begin = .2)+
+   scale_x_date("Date of report")+
+   scale_y_continuous("Number of cases", labels = scales::comma)+
+   labs(title = "Epidemic curve for China")
+)
+```
+
+China is actually doing pretty well, as the number of new confirmed cases has dropped down dramatically since March 3. Once they implemented the movement restrictions, the number of new cases has dropped down to a trickle, even if the total number of cases is still high (not shown). (The spike represents a change in the counting methodology).
+
+In a future post we can start applying some modelling to predict the future situation of Europe, but I leave you with the following warning: 
+
+
+<blockquote class="twitter-tweet"><p lang="en" dir="ltr">You know one thing I learned after doing a PhD? That devoting 3 years of your life to one topic doesn&#39;t make you an expert on it. You need a lifetime. So if you are a data scientist with no health domain knowledge, keep your naive analysis to yourself.</p>&mdash; Pelayo Arbués (@pelayoarbues) <a href="https://twitter.com/pelayoarbues/status/1244717951556747266?ref_src=twsrc%5Etfw">March 30, 2020</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+`r emo::ji("shrug")`
+
+<!-- # Modelling -->
+
+<!-- We will run two types different models. The first are SIR models, which model the epidemic as a series of conceptual _compartments_ for patients and the dynamics between them.  -->
+
+<!-- Another kind of model HERE GOES YADA YADA AND MORE YADA.  -->
+
+<!-- ## SIR models -->
+
+<!-- Following Tim Churches' @churches2020covid19rpart1 approach, we will try to fit a SIR model to our data, in which the outbreak is modelled as a series of compartments (Susceptible, Infectuous and Recovered), with parameters $\beta$ and $\gamma$ to model the rate of transfer from susceptible to infected and from infected to recovered, respectively.  -->
+
+<!-- * __Susceptible__ people are all members of the population who are not infected nor recovered.   -->
+<!-- * __Infectuous__ are people who have contracted the disease. In our case it will mean _lab confirmed cases_.  -->
+<!-- * __Recovered__ are people who have/had COVID-19 but who - for whatever reason - are no longer capable of infecting other people.  -->
+
+<!-- The differential equations that rule the increments through time for each compartment are simple enough:  -->
+
+<!-- $$ -->
+<!-- \frac{dS}{dt} = - \frac{\beta IS}{N} -->
+<!-- $$ -->
+
+<!-- $$ -->
+<!-- \frac{dI}{dt} = \frac{\beta IS}{N} - \gamma I -->
+<!-- $$ -->
+
+<!-- $$ -->
+<!-- \frac{dR}{dt} = \gamma I -->
+<!-- $$ -->
+
+<!-- Then we have to solve this system of differential equations, and optmise the parameters $\beta$ and $\gamma$, either by minimising the Residual Sum of Squares or by Maximum Likelihood (or some Bayesian cleverness). The function `deSolve::ode()` is used for solving ordinary differential equations and the function `base::optim()` finds the parameters values that minimise the residual sum of squares. -->
+
+<!-- $$ -->
+<!-- RSS(\beta, \gamma) = \sum_t (I(t) - \hat I(t))^2 -->
+<!-- $$ -->
+
+<!-- We want to model not just a single country, but a list of them; it would be of course highly inefficient to basically repeat the same lines of code over and over, replacing the country name at every step. So we need to wrap the modelling step in a function. Then we will apply this function via `purrr::map()` to a nested dataset. Let's go step by step:  -->
+
+<!-- First, the SIR model needs a Susceptible parameter. This is usually taken to mean the population of a given country. Our datasets do not incorporate this information; however, the dataset `population` in base R contains population values for 219 countries/states up to 2013. We can use that to get the number of Susceptible people, as the population for the countries of interest hasn't changed much since 2013.  -->
+
+<!-- ```{r} -->
+
+<!-- # We need the population. default dataset "population" in R has data up to 2013. Outdated but it's the best we have.  -->
+<!-- countries.nest <- countries %>%  -->
+<!--   nest() %>%  -->
+<!--   left_join( -->
+<!--     population %>%  -->
+<!--       mutate( -->
+<!--         country = ifelse( -->
+<!--           country == "United Kingdom of Great Britain and Northern Ireland", -->
+<!--           "United Kingdom", country)) %>%  -->
+<!--       filter(year == max(year)) %>% select(-year),  -->
+<!--     by = "country" -->
+<!--   ) %>%  -->
+<!--   select(country, population, data) %>%  -->
+<!--   rename(N = population) -->
+
+<!-- countries.nest -->
+<!-- ``` -->
+
+
+<!-- Then we define a function to run a SIR model automatically. The function will take three arguments: the country, the data and the population size.  -->
+
+<!-- ```{r} -->
+<!-- # A wrapping function for SIR modelling -->
+
+<!-- SIR_model <- function(country, data, N, forward = 0, a = 1){ -->
+
+<!--   if(a > 1 | a <= 0 ){ -->
+<!--     usethis::ui_stop("ascertainment rate a must be larger than 0 and less or equal to 1") -->
+<!--   } -->
+
+<!--   # Initialise each model of the first data available.  -->
+<!--   # Each country has data starting differently. -->
+<!--   sir_start_date <- data %>%  -->
+<!--     pluck("date") %>%  -->
+<!--     min(.) -->
+
+<!--   # The total number of infected on each date.  -->
+<!--   Infected <- data %>%  -->
+<!--     filter(type == "confirmed") %>%  -->
+<!--     mutate(cumcases = cumcases / a) %>%  -->
+<!--     pull(cumcases) -->
+
+<!--   Recovered <- data %>%  -->
+<!--     filter(type == "recovered") %>%  -->
+<!--     pull(cumcases) %>%  -->
+<!--     .[1] -->
+
+<!--   # Preallocate a vector of the same length as the infected length -->
+<!--   Day <- 1:(length(Infected)) -->
+
+<!--   # Initialise the parameters:  -->
+<!--   # - S as the total population minus the infected on day 1 -->
+<!--   # - I as the infected on day one,  -->
+<!--   # - R as the recovered on day one -->
+<!--   init <- c(S = N - Infected[1], I = Infected[1], R = Recovered) -->
+
+<!--   # SIR proper modelling function (taken from Churches) -->
+<!--   SIR <- function(time, state, parameters) { -->
+<!--     par <- as.list(c(state, parameters)) -->
+<!--     with(par, { -->
+<!--       dS <- -beta * I * S/N -->
+<!--       dI <- beta * I * S/N - gamma * I -->
+<!--       dR <- gamma * I -->
+<!--       list(c(dS, dI, dR)) -->
+<!--     }) -->
+<!--   } -->
+
+<!--   # Residual sum of squares (taken from Churches) -->
+<!--   RSS <- function(parameters) { -->
+<!--     names(parameters) <- c("beta", "gamma") -->
+<!--     out <- ode(y = init, times = Day, func = SIR, parms = parameters) -->
+<!--     fit <- out[, 3] -->
+<!--     sum((Infected - fit)^2) -->
+<!--   } -->
+
+<!--   # Optimisation of RSS  -->
+<!--   Opt <- optim(c(0.5, 0.5),  -->
+<!--                RSS,  -->
+<!--                method = "L-BFGS-B",  -->
+<!--                lower = c(0,0),  -->
+<!--                upper = c(1, 1) -->
+<!--   ) -->
+
+<!--   # Extract parameters from the optimisation -->
+<!--   Opt_par <- setNames(Opt$par, c("beta", "gamma")) -->
+
+<!--   # Preallocate a time vector - either to today or to d days into the future -->
+<!--   t <- 1:as.integer(today() - sir_start_date + forward) -->
+
+<!--   # Solve the differential equations with the given parameters -->
+<!--   fitted_cumulative_incidence <- data.frame( -->
+<!--     ode(y = init, times = t, func = SIR, parms = Opt_par) -->
+<!--   ) -->
+
+<!--   # Combine the fitted model with the data -->
+<!--   fitted_cumulative_incidence <- fitted_cumulative_incidence %>%  -->
+<!--     mutate(date = ymd(sir_start_date) + days(t - 1),  -->
+<!--            country = country,  -->
+<!--            param.beta = Opt_par["beta"] %>% unname,  -->
+<!--            param.gamma = Opt_par["gamma"] %>% unname,  -->
+<!--            r0 = param.beta/param.gamma) %>%  -->
+<!--     left_join( -->
+<!--       data %>%  -->
+<!--         filter(type == "confirmed") %>%  -->
+<!--         select(date, cumcases, cases),  -->
+<!--       by = c("date"))  -->
+
+<!--   return(fitted_cumulative_incidence) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- This function definition can now be applied to our data via a mapping function, and in the same way a plot can be generated to visualise the results.  -->
+
+<!-- The SIR models are static in their $\beta$ and $\gamma$ parameters, which means that the base reproduction number $R_0$ is estimated to be constant. This is unlikely to be true as health policies of containment and mitigation are implemented. Nevertheless, these models can be useful to assess "whatif" scenarios in which no measures are taken.  -->
+
+
+<!-- ```{r sir model} -->
+<!-- countries.nest <- countries.nest %>%  -->
+<!--   mutate( -->
+<!--     sirmodel.7 = pmap(list(country, data, N, f = 7), SIR_model), -->
+<!--     sirmodel.30 = pmap(list(country, data, N, f = 30), SIR_model) -->
+
+<!--   )  -->
+<!-- ``` -->
+
+<!-- ```{r, layout = "l-body-outset"} -->
+<!-- countries.nest <- countries.nest %>%  -->
+<!--   mutate( -->
+<!--     sirplot.7 = map2( -->
+<!--       sirmodel.7, -->
+<!--       country, -->
+<!--       ~ggplot(data = .x, aes(date))+ -->
+<!--         geom_line(aes(y = I), colour = "red") + -->
+<!--         geom_point(aes(y = cumcases), colour = "orange") + -->
+<!--         scale_y_continuous("Number of cases", labels = scales::comma)+ -->
+<!--         labs( -->
+<!--           y = "Cumulative incidence", -->
+<!--           title = glue("{.y} forecast for the next 7 days"), -->
+<!--           subtitle = "Y axis in normal scale", -->
+<!--           caption = glue("R0 = {round(.x$r0[1], 3)}")) -->
+<!--     ),  -->
+<!--     sirplot.30 = map2( -->
+<!--       sirmodel.30, -->
+<!--       country, -->
+<!--       ~ggplot(data = .x, aes(date))+ -->
+<!--         geom_line(aes(y = I), colour = "red") + -->
+<!--         geom_line(aes(y = R), colour = "green")+ -->
+<!--         geom_line((aes(y = S)), colour = "black")+ -->
+<!--         geom_point(aes(y = cumcases), colour = "orange") + -->
+<!--         scale_y_log10("Log number of cases", labels = scales::comma)+ -->
+<!--         labs( -->
+<!--           y = "Cumulative incidence", -->
+<!--           title = glue("{.y} forecast for the next 30 days"), -->
+<!--           subtitle = "Y axis in log scale", -->
+<!--           caption = glue("R0 = {round(.x$r0[1], 3)}")) -->
+
+
+<!--     ),  -->
+<!--     sirplot.combined = map2(sirplot.7, sirplot.30,  -->
+<!--                             ~wrap_plots(.x, .y)+ -->
+<!--                               plot_annotation("COVID-19 fitted vs observed cumulative incidence")) -->
+<!--   ) -->
+
+
+<!-- setNames(countries.nest$sirplot.combined, countries.nest$country) -->
+
+
+<!-- ``` -->
+
+
+<!-- ## Early R models -->
+
+
+
+
+
+## Corrections {.appendix}
+
+Any mistakes or suggested changes please [open an issue](https://github.com/Lornebradia/r-experiments/issues/new) on the source repository. 
+
+
+## Links {.appendix}
+
