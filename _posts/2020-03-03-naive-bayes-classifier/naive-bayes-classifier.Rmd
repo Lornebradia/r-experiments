@@ -1,0 +1,54 @@
+---
+title: "Naive Bayes classifier"
+description: |
+  A short description of the post.
+author:
+  - name: Lorenzo Braschi
+    affiliation: Roche Global IT Solution Centre
+date: 03-10-2020
+output:
+  distill::distill_article:
+    self_contained: false
+draft: true
+bibliography: ../biblio.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+Naive Bayes classifiers are a series of models based on Bayes' Theorem in which the common assumption is the conditional independence of the predictors. It is _naive_ precisely because of this assumption. 
+
+As the name suggests, the Bayes classifier makes use of Bayes Theorem for computing the probability of an event given the data from the prior odds and the likelihood: 
+
+$$
+P(y \mid x_1, x_2, \dots , x_n) = \frac{\Pi_{i=1}^n P(x_i \mid y) \cdot P(y)}{\Pi_{i=1}^n P(x_i)}
+$$
+
+where $y$ is the outcome we're interested in and $x_1, x_2, \dots , x_n$ are the different predictors. Ignoring the lower term as a standarisation term, we have that 
+
+$$
+P(y \mid x_1, x_2, \dots , x_n) \propto P(y) \cdot \Pi_{i=1}^n P(x_i \mid y)
+$$
+
+In the context of classification prediction, we will predict that value of $y$ that has the largest probability: 
+
+$$
+argmax_y ~ P(y) \cdot \Pi_{i=1}^n P(x_i \mid y)
+$$
+
+
+
+Consider for example the chance that someone will develop lung cancer within the year; this can be modelled as a binary classification yes/no, although reality is of course much more complicated than that. We could consider a number of potential predictors for this outcome, such as family history, smoking habits, dieting habits, exposure to other carcinogens, and such. 
+
+<aside>
+@Dimitoglou2012-kt for an example.
+</aside>
+
+## Corrections {.appendix}
+
+Any mistakes or suggested changes please [open an issue](https://github.com/Lornebradia/r-experiments/issues/new) on the source repository. 
+
+## Links {.appendix}
+
+[Towards Data Science: Naive Bayes Classifier](https://towardsdatascience.com/naive-bayes-classifier-81d512f50a7c)

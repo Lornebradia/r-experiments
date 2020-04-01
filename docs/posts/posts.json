@@ -1,5 +1,20 @@
 [
   {
+    "path": "posts/2020-03-31-r-and-covid-19/",
+    "title": "COVID-19 in Europe",
+    "description": "Looking at the data",
+    "author": [
+      {
+        "name": "Lorenzo Braschi",
+        "url": {}
+      }
+    ],
+    "date": "2020-04-01",
+    "categories": [],
+    "preview": "posts/2020-03-31-r-and-covid-19/r-and-covid-19_files/figure-html5/unnamed-chunk-8-1.png",
+    "last_modified": "2020-04-01T13:53:15+02:00"
+  },
+  {
     "path": "posts/welcome/",
     "title": "Welcome to R Experiments",
     "description": "Welcome to my new blog, R Experiments. We hope you enjoy \nreading what we have to say!",
